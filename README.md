@@ -49,3 +49,5 @@ To get more help on the Angular CLI use `ng help` or go check out the [Angular C
 ## Adding nav and sidebar
 `ng g component navigation/header --skipTests`
 
+## Adding sidenav
+`ng g component navigation/sidenav-list --skipTests`
