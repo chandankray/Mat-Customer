@@ -42,3 +42,6 @@ To get more help on the Angular CLI use `ng help` or go check out the [Angular C
 
 ## Creating Home Component and Using Material Tabs
 `ng g component home --skipTests`
+
+## creating a new routing module
+`ng g module routing --module app` Home served on the /home route
