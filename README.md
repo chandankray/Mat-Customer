@@ -39,3 +39,6 @@ To get more help on the Angular CLI use `ng help` or go check out the [Angular C
 
 ## Angular Flex Layout
 'npm install @angular/flex-layout --save'
+
+## Creating Home Component and Using Material Tabs
+`ng g component home --skipTests`
