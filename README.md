@@ -33,3 +33,9 @@ To get more help on the Angular CLI use `ng help` or go check out the [Angular C
 
 ## Creating Material Module
 `ng g module material --module app`
+
+## Creating the Layout Component
+`ng g component layout`
+
+## Angular Flex Layout
+'npm install @angular/flex-layout --save'
