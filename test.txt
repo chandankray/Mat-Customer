@@ -1,0 +1,256 @@
+Absolutely — let’s walk through all the steps in detail, including prerequisites and important actions, so you can confidently restore your RDS SQL Server database in another region and resume DMS CDC-based replication.
+
+
+---
+
+Full Plan: Sync RDS SQL Server to Another Region Using Backup + DMS
+
+
+---
+
+Prerequisites
+
+Item	Description
+
+DMS is already set up	You have an existing DMS replication task (full load + CDC or CDC-only)
+Source is RDS SQL Server	CDC is enabled and running on the source database
+Target is also RDS SQL Server	A database exists in another region, but it’s out of sync
+IAM roles	You’ve created and attached an IAM role that allows RDS access to an S3 bucket (source and target regions)
+Option group	Both source and target RDS instances have an option group with SQLSERVER_BACKUP_RESTORE enabled
+
+
+
+---
+
+Step-by-Step
+
+
+---
+
+STEP 1: Pause Your DMS Task
+
+Why: Prevent data inconsistency or errors while syncing the target DB.
+
+Go to AWS DMS Console → Select your Task → Stop
+
+Ensure it’s not writing to the out-of-sync target anymore
+
+
+
+---
+
+STEP 2: Prepare Source DB for Backup
+
+Goal: Ensure CDC metadata is preserved and intact for restore.
+
+a) Confirm CDC is enabled:
+
+SELECT is_cdc_enabled FROM sys.databases WHERE name = 'YourDB';
+SELECT name, is_tracked_by_cdc FROM sys.tables WHERE is_tracked_by_cdc = 1;
+
+If not, enable it:
+
+EXEC sys.sp_cdc_enable_db;
+
+EXEC sys.sp_cdc_enable_table  
+  @source_schema = 'dbo',  
+  @source_name = 'YourTable',  
+  @role_name = NULL;
+
+b) Ensure FULL Recovery Mode:
+
+SELECT name, recovery_model_desc FROM sys.databases WHERE name = 'YourDB';
+
+If not FULL:
+
+ALTER DATABASE YourDB SET RECOVERY FULL;
+BACKUP DATABASE YourDB TO DISK = 'nul'; -- dummy backup to finalize mode
+
+c) Record the Current LSN (for CDC resume):
+
+SELECT sys.fn_cdc_get_max_lsn() AS MaxLSN;
+
+Save this LSN if you need to specify a resume point.
+
+d) Stop CDC Cleanup Job (temporarily):
+
+EXEC sys.sp_cdc_stop_job @job_type = 'cleanup';
+
+> Optional: Extend CDC retention:
+
+
+
+EXEC sys.sp_cdc_change_job @job_type = 'cleanup', @retention = 4320; -- 3 days
+
+
+---
+
+STEP 3: Backup Source DB to S3
+
+Make sure:
+
+SQLSERVER_BACKUP_RESTORE option is added to the RDS instance
+
+IAM role is attached to the instance
+
+
+Command:
+
+EXEC msdb.dbo.rds_backup_database 
+  @source_db_name='YourDB', 
+  @s3_arn_to_backup_to='arn:aws:s3:::your-source-bucket/YourDB.bak', 
+  @overwrite_S3_backup_file=1;
+
+Monitor task:
+
+EXEC msdb.dbo.rds_task_status @db_name='YourDB';
+
+
+---
+
+STEP 4: Copy Backup to Other Region
+
+Use AWS CLI:
+
+aws s3 cp s3://your-source-bucket/YourDB.bak s3://your-target-bucket/YourDB.bak \
+  --source-region us-east-1 \
+  --region us-west-2
+
+
+---
+
+STEP 5: Restore DB on Target RDS in New Region
+
+Ensure:
+
+SQL Server RDS in target region exists
+
+SQLSERVER_BACKUP_RESTORE option is added
+
+IAM role with S3 access is attached
+
+
+Run on target DB:
+
+EXEC msdb.dbo.rds_restore_database 
+  @restore_db_name='YourDB', 
+  @s3_arn_to_restore_from='arn:aws:s3:::your-target-bucket/YourDB.bak';
+
+Wait for task to complete:
+
+EXEC msdb.dbo.rds_task_status @db_name='YourDB';
+
+
+---
+
+STEP 6: Validate CDC on Restored Target
+
+CDC should remain intact, but verify:
+
+-- Is CDC enabled on the DB?
+SELECT is_cdc_enabled FROM sys.databases WHERE name = 'YourDB';
+
+-- Are tables tracked by CDC?
+SELECT name, is_tracked_by_cdc FROM sys.tables WHERE is_tracked_by_cdc = 1;
+
+If not enabled, re-enable:
+
+EXEC sys.sp_cdc_enable_db;
+EXEC sys.sp_cdc_enable_table @source_schema='dbo', @source_name='YourTable', @role_name=NULL;
+
+Check for CDC jobs (optional):
+
+SELECT * FROM msdb.dbo.cdc_jobs;
+
+
+---
+
+STEP 7: Resume DMS CDC Replication
+
+1. Go to AWS DMS Console
+
+
+2. Choose your existing replication task
+
+
+3. Modify it to use:
+
+"CDC only" mode
+
+Start point:
+
+Let DMS resume from checkpoint (default), or
+
+Provide start LSN (if you recorded it earlier)
+
+
+
+
+4. Start the DMS task
+
+
+
+
+---
+
+STEP 8: Monitor and Confirm Sync
+
+Use DMS Table Statistics and CloudWatch logs
+
+Watch for:
+
+CDC latency
+
+LSN mismatch errors
+
+Tables in "error" state
+
+
+
+
+---
+
+STEP 9: Cleanup
+
+Once replication is healthy:
+
+Restart CDC cleanup:
+
+
+EXEC sys.sp_cdc_start_job @job_type = 'cleanup';
+
+Optionally delete the .bak files from S3
+
+
+
+---
+
+Summary Table
+
+Step	Description
+
+1	Pause DMS task
+2	Validate CDC + record LSN on source
+3	Backup to S3 using native backup
+4	Copy .bak to other region
+5	Restore .bak to target RDS
+6	Validate or re-enable CDC on target
+7	Resume DMS with CDC-only mode
+8	Monitor sync health
+9	Cleanup
+
+
+
+---
+
+Let me know if you'd like:
+
+SQL scripts for all CDC steps
+
+IAM policy templates
+
+A checklist in PDF/Excel form
+
+
+I'm happy to provide.
+
