@@ -237,20 +237,5 @@ Step	Description
 6	Validate or re-enable CDC on target
 7	Resume DMS with CDC-only mode
 8	Monitor sync health
-9	Cleanup
 
-
-
----
-
-Let me know if you'd like:
-
-SQL scripts for all CDC steps
-
-IAM policy templates
-
-A checklist in PDF/Excel form
-
-
-I'm happy to provide.
 
